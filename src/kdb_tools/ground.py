@@ -119,14 +119,18 @@ def check(b: B.Bundle, page: B.Page, source: dict, lib: Library, annotated_dir: 
     return True
 
 
-def ground(root: Path, annotated: str = "annotated") -> Report:
+def ground(root: Path, annotated: str = "annotated", pages: list[str] | None = None) -> Report:
+    """Check every source against its PDF; with pages, only the sources on those pages."""
     report = Report(TOOL)
+    wanted = {p.lstrip("/") for p in pages} if pages is not None else None
     b = B.load(root)
     annotated_dir = (root / annotated).resolve()
     lib = Library()
     checked = 0
     try:
         for page in b.concepts:
+            if wanted is not None and page.rel not in wanted:
+                continue
             for source in page.sources:
                 if isinstance(source, dict) and check(b, page, source, lib, annotated_dir, report):
                     checked += 1
@@ -141,10 +145,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("bundle", type=Path, help="the bundle root directory")
     parser.add_argument("--annotated", default="annotated", help="directory of annotated copies, relative to the bundle root")
     parser.add_argument("--json", action="store_true", help="print a JSON report")
+    parser.add_argument("--pages", nargs="+", metavar="PAGE", help="check only the sources on these pages")
     args = parser.parse_args(argv)
     if not args.bundle.is_dir():
         return fail(TOOL, f"{args.bundle} is not a directory")
-    report = ground(args.bundle, args.annotated)
+    report = ground(args.bundle, args.annotated, args.pages)
     report.print(args.json)
     return report.exit_code()
 

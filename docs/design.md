@@ -181,6 +181,20 @@ a `contested_by` entry needs a new stamp even when its body reads the same.
 It also lists changes to `index.md`, `log.md` and the files under `papers/` and `annotated/`, so
 the findings report can be checked against them.
 
+## Scoped checks and agent tools
+
+`validate(root, pages=...)` and `ground(root, pages=...)`, and `--pages` on both commands, report
+only findings on the named pages; `ground` then opens only the PDFs those pages cite. The checks
+still read the whole bundle, because some rules span pages (one page per entity, ontology
+layers), and a finding is kept when its path is one of the named pages.
+
+`kdb_tools.tools.KdbTools` exposes `find_quote`, `find_value` and `check_pages` with dataclass
+results and a `ToolInputError` for a call the agent should correct. `kdb_tools.agent` wraps them
+as a Pydantic AI `FunctionToolset` and turns `ToolInputError` into `ModelRetry`. `kdb_tools.mcp`
+serves them with the MCP SDK 2.x `MCPServer` and turns `ToolInputError` into `ToolError`, the
+only exception whose message that SDK passes to the model; any other exception is reported as
+a crash with its message hidden. Neither extra is needed by the core.
+
 ## Not checked here
 
 Whether a cited sentence actually supports the claim attached to it is judged by a TA, not by

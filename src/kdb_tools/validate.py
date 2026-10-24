@@ -380,8 +380,11 @@ def ancestors(b: B.Bundle) -> dict[str, set[str]]:
     return found
 
 
-def validate(root: Path, profiles: list[P.Profile] | None = None) -> Report:
-    """The core rules, then each profile's page rules; profiles default to the installed ones."""
+def validate(root: Path, profiles: list[P.Profile] | None = None, pages: list[str] | None = None) -> Report:
+    """The core rules, then each profile's page rules; profiles default to the installed ones.
+
+    With pages, only findings on those pages (paths from the bundle root) are reported, so an
+    ingest answers for the pages it wrote and not for errors an earlier ingest left."""
     report = Report(TOOL)
     b = B.load(root)
     profiles = P.installed() if profiles is None else profiles
@@ -397,6 +400,9 @@ def validate(root: Path, profiles: list[P.Profile] | None = None) -> Report:
     check_entities(b, report)
     check_terms(b, report)
     report.extra["pages"] = len(b.concepts)
+    if pages is not None:
+        wanted = {p.lstrip("/") for p in pages}
+        report.findings = [f for f in report.findings if f.path in wanted]
     return report
 
 
@@ -405,13 +411,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("bundle", type=Path, help="the bundle root directory")
     parser.add_argument("--json", action="store_true", help="print a JSON report")
     parser.add_argument("--profile", help="run only this installed profile's rules; default: every installed profile")
+    parser.add_argument("--pages", nargs="+", metavar="PAGE", help="report only findings on these pages, such as models/openvla.md")
     args = parser.parse_args(argv)
     if not args.bundle.is_dir():
         return fail(TOOL, f"{args.bundle} is not a directory")
     profiles = P.installed(args.profile)
     if args.profile and not profiles:
         return fail(TOOL, f"no installed profile is called {args.profile}")
-    report = validate(args.bundle, profiles)
+    report = validate(args.bundle, profiles, args.pages)
     report.print(args.json)
     return report.exit_code()
 
