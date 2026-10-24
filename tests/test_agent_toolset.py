@@ -22,27 +22,27 @@ def tools(bundle):
     return {name: t.function for name, t in ts.tools.items()}, boxes
 
 
-def test_the_toolset_has_the_three_tools(tools):
-    assert sorted(tools[0]) == ["check_pages", "find_quote", "find_value"]
+def test_the_toolset_has_the_four_tools(tools):
+    assert sorted(tools[0]) == ["check_pages", "find_cell", "find_quote", "find_value"]
 
 
 def test_find_quote_gives_the_bbox_or_says_where_the_text_is(tools):
     fns, boxes = tools
-    hit = fns["find_quote"](paper="kim2024", page=2, text=QUOTE)
+    hit = fns["find_quote"](document="kim2024", page=2, text=QUOTE)
     assert hit.found and hit.boxes == [pytest.approx(boxes[QUOTE], abs=1)]
-    miss = fns["find_quote"](paper="kim2024", page=1, text=QUOTE)
+    miss = fns["find_quote"](document="kim2024", page=1, text=QUOTE)
     assert not miss.found and "page 2" in miss.note
 
 
 def test_find_value_finds_a_table_number(tools):
     fns, _ = tools
-    assert fns["find_value"](paper="kim2024", page=2, value="76.5").found
+    assert fns["find_value"](document="kim2024", page=2, value="76.5").found
 
 
-def test_an_unknown_paper_is_sent_back_with_the_papers_there_are(tools):
+def test_an_unknown_document_is_sent_back_with_the_documents_there_are(tools):
     fns, _ = tools
     with pytest.raises(ModelRetry, match="kim2024"):
-        fns["find_quote"](paper="nope", page=1, text=QUOTE)
+        fns["find_quote"](document="nope", page=1, text=QUOTE)
 
 
 def test_check_pages_reports_only_the_pages_asked_about(tools):
@@ -50,3 +50,13 @@ def test_check_pages_reports_only_the_pages_asked_about(tools):
     assert fns["check_pages"](paths=["models/good.md"]).errors == []
     bad = fns["check_pages"](paths=["models/bad.md"])
     assert [e.rule for e in bad.errors] == ["project.generated"] and bad.errors[0].path == "models/bad.md"
+
+
+def test_find_cell_reads_a_spreadsheet(bundle):
+    from conftest import make_xlsx
+
+    make_xlsx(bundle.root / "documents" / "ar4-dh.xlsx", {"DH": [["joint", "d (mm)"], ["J1", 169.77]]})
+    fns = {name: t.function for name, t in A.toolset(bundle.root, profiles=[]).tools.items()}
+    assert fns["find_cell"](document="ar4-dh", value="169.77").cells == ["DH!B2"]
+    with pytest.raises(ModelRetry, match="DH"):
+        fns["find_cell"](document="ar4-dh", value="169.77", sheet="Joints")

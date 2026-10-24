@@ -1,7 +1,8 @@
-"""okf-ground: check every source in a kDB bundle against its PDF and its annotated copy.
+"""okf-ground: check every source in a kDB bundle against its document and its annotated copy.
 
 A sentence source must appear on its page and inside its bbox. A table-cell source's value must
-appear inside its bbox. Every bbox must match a highlight in the annotated copy of the paper.
+appear inside its bbox. Every bbox must match a highlight in the annotated copy of the PDF. A
+spreadsheet cell source's cell must hold its value; a spreadsheet has no highlights.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from pathlib import Path
 import pdfplumber
 
 from . import bundle as B
+from . import sheet as S
 from .locate import find_quote, inside
 from .report import Report, fail
 
@@ -53,6 +55,16 @@ class Paper:
 class Library:
     def __init__(self):
         self._open: dict[Path, Paper | None] = {}
+        self._books: dict[Path, S.Workbook | str] = {}
+
+    def workbook(self, path: Path) -> S.Workbook | str:
+        """The workbook, or why it could not be read."""
+        if path not in self._books:
+            try:
+                self._books[path] = S.Workbook(path)
+            except Exception as exc:  # not a readable spreadsheet
+                self._books[path] = f"'{path.name}' could not be read as a spreadsheet: {exc}"
+        return self._books[path]
 
     def get(self, path: Path) -> Paper | None:
         if path not in self._open:
@@ -80,7 +92,36 @@ def where_hint(paper: Paper, page_no: int, bbox: list[float], spans: list[list[f
     return f"; the quote is at {[round(v, 1) for v in spans[0]]}"
 
 
+def check_cell(b: B.Bundle, page: B.Page, source: dict, lib: Library, report: Report) -> bool:
+    sid, resource, ref = source.get("id"), source.get("resource"), source.get("cell")
+    if not isinstance(resource, str) or not S.is_a1(ref) or "value" not in source:
+        return False  # malformed sources are okf-validate's job
+    path = B.resolve(b.root, page.rel, resource)
+    if path is None or path.suffix.lower() not in S.SUFFIXES or not path.is_file():
+        report.warning("ground.resource", page.rel, f"'{resource}' is not a spreadsheet in the bundle, so it was not checked", sid)
+        return False
+    book = lib.workbook(path)
+    if isinstance(book, str):
+        report.error("ground.resource", page.rel, book, sid)
+        return False
+    try:
+        held = book.read(source.get("sheet"), ref)
+    except S.SheetError as exc:
+        rule = "ground.sheet" if str(exc).startswith("there is no sheet") else "ground.cell"
+        report.error(rule, page.rel, str(exc), sid)
+        return True
+    if held is None or not S.same_value(source["value"], held):
+        where = f"{source['sheet']}!{ref}" if source.get("sheet") else ref
+        holds = "is empty" if held is None else f"holds {S.show(held)!r}"
+        found = book.find(source["value"])
+        hint = f"; '{source['value']}' is in {', '.join(found[:5])}" if found else ""
+        report.error("ground.cell", page.rel, f"cell {where} {holds}, not '{source['value']}'{hint}", sid)
+    return True
+
+
 def check(b: B.Bundle, page: B.Page, source: dict, lib: Library, annotated_dir: Path, report: Report) -> bool:
+    if "cell" in source:
+        return check_cell(b, page, source, lib, report)
     sid = source.get("id")
     resource, page_no, bbox = source.get("resource"), source.get("page"), source.get("bbox")
     if not isinstance(resource, str) or not isinstance(page_no, int) or not isinstance(bbox, list) or len(bbox) != 4:

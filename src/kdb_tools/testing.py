@@ -99,6 +99,20 @@ def make_pdf(path: Path, pages: list[list[tuple[float, float, str]]], size: int 
     return boxes
 
 
+def make_xlsx(path: Path, sheets: dict[str, list[list]]) -> None:
+    """Write an .xlsx file with one sheet per entry, rows from A1. A string starting with = is a formula."""
+    from openpyxl import Workbook
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb = Workbook()
+    wb.remove(wb.active)
+    for name, rows in sheets.items():
+        ws = wb.create_sheet(name)
+        for row in rows:
+            ws.append(row)
+    wb.save(path)
+
+
 def highlight(src: Path, dst: Path, marks: list[tuple[int, list[float]]]) -> None:
     """Copy src to dst and add one highlight per (page number from 1, bbox)."""
     from pypdf import PdfReader, PdfWriter

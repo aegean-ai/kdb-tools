@@ -27,15 +27,17 @@ kdb/
   index.md          # lists every concept page
   log.md            # one entry per ingest, newest first
   <concept>.md      # one concept per page, in any subdirectory
-  papers/           # the original PDFs, unmodified
-  annotated/        # the annotated copies, same file names as papers/
+  papers/           # the source documents, unmodified: PDFs, and .xlsx or .csv spreadsheets
+  documents/        # the same, for a project whose sources are not papers
+  annotated/        # the annotated copies of the PDFs, same file names
 ```
 
 Paths follow OKF section 6.2. A path that starts with `/` is relative to the bundle root, and
 any other path is relative to the page that contains it. Use the bundle-relative form, for
 example `resource: /papers/kim2024.pdf`, so a page can move without breaking its sources. The
-annotated copy of a paper is the file with the same name in `annotated/`. That directory can
-be changed with `--annotated`.
+annotated copy of a PDF is the file with the same name in `annotated/`. That directory can
+be changed with `--annotated`. The agent tools name a document by its file name without the
+suffix, such as `2406.09246` or `ar4-dh`, and look for it in `papers/` and `documents/`.
 
 ## Coordinates
 
@@ -51,12 +53,18 @@ prints the corrected bbox.
 
 ## Sources
 
-A source is either a sentence or a table cell.
+A source is a sentence or a table cell in a PDF, or a cell in a spreadsheet.
 
 | Kind | Required keys |
 |---|---|
 | sentence | `id`, `resource`, `page`, `quote`, `bbox` |
 | table cell | `id`, `resource`, `page`, `table`, `row`, `column`, `value`, `bbox` |
+| spreadsheet cell | `id`, `resource`, `cell`, `value`, and `sheet` for an `.xlsx` file |
+
+A spreadsheet cell source cites an `.xlsx` or `.csv` file. `cell` is one A1 reference in
+capitals, such as `B4`. A `.csv` file has a single unnamed sheet, so its sources have no
+`sheet`. A key named `cell` is what makes a source a spreadsheet cell, so it is checked before
+`quote` and `value`.
 
 ## Findings
 
@@ -145,6 +153,11 @@ Opens the PDFs and checks every source against them.
 | `ground.quote` | error | the quote appears in the page's characters, after normalizing whitespace, ligatures, quotes, dashes and line-break hyphens. The characters are read in content-stream order, then in reading order, then column by column, for a two-column page drawn line by line across both columns. A match that jumps a gap wider than two characters within a line is text spliced from two columns and does not count |
 | `ground.bbox` | error | at least one occurrence of the quote, or of the table-cell value, lies inside the bbox, with 2 points of slack on each side. The error gives the position of the text, and says so when the bbox looks measured from the top of the page |
 | `ground.highlight` | error | the annotated copy has a highlight on that page whose rectangle overlaps the bbox with intersection over union of at least 0.5 |
+| `ground.sheet` | error | the sheet a spreadsheet cell source names exists. The error lists the sheets there are |
+| `ground.cell` | error | the cell holds the value. Numbers are compared as numbers, so `169.77`, `169.770` and the float 169.77 match; anything else is compared as text with outer spaces removed. The error gives what the cell holds and the cells that do hold the value. A formula whose value was never saved, as in a file written by a script, is reported as such |
+
+An `.xlsx` file is read with openpyxl, using the value each formula last computed. A
+spreadsheet has no annotated copy and no highlight: the cell reference is already exact.
 
 Quotes are matched against the page's characters in the order the PDF draws them, not against
 extracted page text. Extractors reorder lines: two columns at the same height come out
@@ -188,12 +201,33 @@ only findings on the named pages; `ground` then opens only the PDFs those pages 
 still read the whole bundle, because some rules span pages (one page per entity, ontology
 layers), and a finding is kept when its path is one of the named pages.
 
-`kdb_tools.tools.KdbTools` exposes `find_quote`, `find_value` and `check_pages` with dataclass
+`kdb_tools.tools.KdbTools` exposes `find_quote`, `find_value`, `find_cell` and `check_pages` with dataclass
 results and a `ToolInputError` for a call the agent should correct. `kdb_tools.agent` wraps them
 as a Pydantic AI `FunctionToolset` and turns `ToolInputError` into `ModelRetry`. `kdb_tools.mcp`
 serves them with the MCP SDK 2.x `MCPServer` and turns `ToolInputError` into `ToolError`, the
 only exception whose message that SDK passes to the model; any other exception is reported as
 a crash with its message hidden. Neither extra is needed by the core.
+
+## The common agent
+
+Every project that builds a kDB writes an agent that reads documents and one that answers
+questions. The parts that do not depend on the project live in `kdb_tools.agent`, with the
+model configuration in `kdb_tools.config` and the prompt guard in `kdb_tools.guard`.
+
+`config.load` reads `kdb.toml`: an OpenAI-compatible `base_url`, a `model`, the server's
+`context` in tokens and an optional `reasoning_effort`. It refuses an API key written in the
+file and reads it from the environment variable that `api_key_env` names. `guard.check`
+refuses a prompt longer than three quarters of the context, because Ollama cuts an overlong
+prompt without an error.
+
+`extraction_agent(model, output_type, instructions)` reads one `Chunk`: a few pages of a PDF from
+`pdf_chunks`, or one sheet from `sheet_chunks`, which prints every value next to its cell
+reference. The output type is the project's own. Every `Quote` or `CellValue` inside it, at any
+depth, is checked against the document, and the model is sent back with the list of evidence
+that is not where it says. `ask_agent(model)` answers from the kDB with `list_pages` and
+`read_page`, and sends back a claim that cites a source id its page does not have.
+
+Writing kDB pages is not here. It is the work each project grades.
 
 ## Not checked here
 

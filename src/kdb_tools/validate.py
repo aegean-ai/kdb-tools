@@ -15,11 +15,13 @@ from pathlib import Path
 
 from . import bundle as B
 from . import profile as P
+from . import sheet as S
 from .report import Report, fail
 
 TOOL = "okf-validate"
 SENTENCE_KEYS = ("id", "resource", "page", "quote", "bbox")
 CELL_KEYS = ("id", "resource", "page", "table", "row", "column", "value", "bbox")
+SHEET_KEYS = ("id", "resource", "cell", "value")  # plus sheet, for a workbook with named sheets
 ABBREVIATIONS = ("et al.", "e.g.", "i.e.", "vs.", "Fig.", "Eq.", "Sec.", "Tab.", "approx.", "resp.")
 LINK = re.compile(r"\]\(([^)\s]+)")
 SENTENCE = re.compile(r".+?[.!?](?:\[\^[^\]\s]+\])*(?=\s|$)|.+$", re.DOTALL)
@@ -125,12 +127,15 @@ def check_source(b: B.Bundle, page: B.Page, source, seen: set, report: Report) -
     if not isinstance(source, dict):
         report.error("project.source", page.rel, "a sources entry is not a mapping")
         return
-    if "quote" in source:
+    if "cell" in source:
+        kind, keys = "spreadsheet cell", SHEET_KEYS
+    elif "quote" in source:
         kind, keys = "sentence", SENTENCE_KEYS
     elif "value" in source or "table" in source:
         kind, keys = "table cell", CELL_KEYS
     else:
-        report.error("project.source", page.rel, "a source needs a quote (sentence) or a table, row, column and value (table cell)", label)
+        report.error("project.source", page.rel, "a source needs a quote (sentence), a table, row, column and value "
+                     "(table cell), or a cell and value (spreadsheet cell)", label)
         return
     missing = [k for k in keys if k not in source]
     if missing:
@@ -153,8 +158,21 @@ def check_source(b: B.Bundle, page: B.Page, source, seen: set, report: Report) -
         path = B.resolve(b.root, page.rel, resource)
         if path is not None and not path.is_file():
             report.error("project.source", page.rel, missing_resource(b, page, resource, path), label)
+        if kind == "spreadsheet cell" and path is not None:
+            check_sheet_source(page, source, path, label, report)
     elif "resource" in source:
         report.error("project.source", page.rel, "resource is a path", label)
+
+
+def check_sheet_source(page: B.Page, source: dict, path: Path, label: str, report: Report) -> None:
+    if path.suffix.lower() not in S.SUFFIXES:
+        report.error("project.source", page.rel, f"a spreadsheet cell source cites a {' or '.join(S.SUFFIXES)} file, "
+                     f"not '{source['resource']}'", label)
+        return
+    if "cell" in source and not S.is_a1(source["cell"]):
+        report.error("project.source", page.rel, "cell is one A1 reference in capitals, such as B4", label)
+    if S.needs_sheet(path) and not isinstance(source.get("sheet"), str):
+        report.error("project.source", page.rel, "a cell in an .xlsx file needs the name of its sheet", label)
 
 
 def check_concept(b: B.Bundle, page: B.Page, listed: set[Path], all_ids: set[str], report: Report) -> None:

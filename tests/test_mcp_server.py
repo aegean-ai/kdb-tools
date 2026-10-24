@@ -35,14 +35,14 @@ def text(result):
     return json.loads(result.content[0].text)
 
 
-def test_okf_mcp_serves_the_three_tools_over_stdio(kdb):
+def test_okf_mcp_serves_the_four_tools_over_stdio(kdb):
     names, (hit, miss, checked, bad) = anyio.run(session_calls, kdb, [
-        ("find_quote", {"paper": "kim2024", "page": 2, "text": QUOTE}),
-        ("find_quote", {"paper": "kim2024", "page": 1, "text": QUOTE}),
+        ("find_quote", {"document": "kim2024", "page": 2, "text": QUOTE}),
+        ("find_quote", {"document": "kim2024", "page": 1, "text": QUOTE}),
         ("check_pages", {"paths": ["models/good.md"]}),
-        ("find_quote", {"paper": "nope", "page": 1, "text": QUOTE}),
+        ("find_quote", {"document": "nope", "page": 1, "text": QUOTE}),
     ])
-    assert names == ["check_pages", "find_quote", "find_value"]
+    assert names == ["check_pages", "find_cell", "find_quote", "find_value"]
     assert text(hit)["found"] is True and not hit.is_error
     assert text(miss)["found"] is False and "page 2" in text(miss)["note"]
     assert text(checked) == {"errors": [], "warnings": []}

@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 RESERVED = {"index.md", "log.md"}
-SKIP_DIRS = {".git", "papers", "annotated", "node_modules", ".venv"}
+SKIP_DIRS = {".git", "papers", "documents", "annotated", "node_modules", ".venv"}
 
 CITATION = re.compile(r"\[\^([^\]\s]+)\](?!:)")
 DEFINITION = re.compile(r"^\[\^([^\]\s]+)\]:", re.MULTILINE)

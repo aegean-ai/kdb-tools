@@ -3,7 +3,7 @@
     okf-mcp kdb                      # stdio, for a local agent
     claude mcp add kdb -- okf-mcp kdb
 
-A call the agent should correct, such as an unknown paper, comes back as an MCP error result
+A call the agent should correct, such as an unknown document, comes back as an MCP error result
 with a message that says how to fix it, never as a normal result with an error inside.
 """
 
@@ -36,19 +36,26 @@ def _located(call):
 def server(root: Path, profiles=None) -> MCPServer:
     kt = KdbTools(root, profiles)
     srv = MCPServer("kdb-tools", instructions=(
-        "Tools for one kDB bundle. find_quote and find_value say where a sentence or a table value is in a paper, "
-        "the way okf-ground looks for it. check_pages runs okf-validate and okf-ground on the pages you name."))
+        "Tools for one kDB bundle. find_quote and find_value say where a sentence or a table value is in a PDF, "
+        "and find_cell which spreadsheet cells hold a value, the way okf-ground looks for them. check_pages runs okf-validate and okf-ground on the pages you name."))
 
     @srv.tool()
-    def find_quote(paper: str, page: int, text: str) -> dict:
-        """Find a sentence on a page of a paper. paper is its arXiv id, such as 2406.09246, and page counts
-        from 1. Returns the bounding boxes where the sentence is, or a note saying which page it is on."""
-        return _located(lambda: kt.find_quote(paper, page, text))
+    def find_quote(document: str, page: int, text: str) -> dict:
+        """Find a sentence on a page of a PDF. document is the file name without .pdf, such as 2406.09246 or
+        ar4-manual, and page counts from 1. Returns the bounding boxes where the sentence is, or a note saying
+        which page it is on."""
+        return _located(lambda: kt.find_quote(document, page, text))
 
     @srv.tool()
-    def find_value(paper: str, page: int, value: str) -> dict:
-        """Find a table value, such as 76.5, on a page of a paper. Returns its bounding boxes, or a note."""
-        return _located(lambda: kt.find_value(paper, page, value))
+    def find_value(document: str, page: int, value: str) -> dict:
+        """Find a table value, such as 76.5, on a page of a PDF. Returns its bounding boxes, or a note."""
+        return _located(lambda: kt.find_value(document, page, value))
+
+    @srv.tool()
+    def find_cell(document: str, value: str, sheet: str | None = None) -> dict:
+        """Find the cells of a spreadsheet (.xlsx or .csv) that hold a value, such as 169.77. document is the
+        file name without its suffix, and sheet limits the search to one sheet. Returns cells such as DH!B4."""
+        return _located(lambda: kt.find_cell(document, value, sheet))
 
     @srv.tool()
     def check_pages(paths: list[str]) -> dict:

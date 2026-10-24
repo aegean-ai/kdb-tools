@@ -1,18 +1,19 @@
 [project]
 name = "kdb-tools"
-version = "0.3.0"
-description = "Store and check a kDB: OKF v0.2 bundles, grounding against PDFs, highlights, snapshot diffs and layered ontologies, with project profiles"
+version = "0.4.0"
+description = "Store and check a kDB: OKF v0.2 bundles, grounding against PDFs and spreadsheets, highlights, snapshot diffs and layered ontologies, with project profiles"
 requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
     "pyyaml>=6",
     "pdfplumber>=0.11",
     "pypdf>=5",
-    "pillow>=13",  # security floor: every Pillow below 13.0.0 has open advisories (GHSA-v9pv-5gc8-w2m6 and others)
+    "pillow>=13", # security floor: every Pillow below 13.0.0 has open advisories (GHSA-v9pv-5gc8-w2m6 and others)
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]
-agent = ["pydantic-ai-slim>=2.58,<3"]  # kdb_tools.agent: the checks as Pydantic AI tools
+agent = ["pydantic-ai-slim[openai]>=2.58,<3"]  # kdb_tools.agent: the checks as tools, and the common agent parts
 mcp = ["mcp>=2.3,<3"]  # okf-mcp: the same tools over MCP
 
 [project.scripts]

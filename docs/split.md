@@ -13,7 +13,7 @@ split so that a fix lands once and both projects grade with the same code.
 |---|---|---|
 | `aegean-ai/kdb-tools` | public | the package `kdb-tools`, module `kdb_tools`: bundle I/O, `locate`, `annotate`, `okf-validate`, `okf-ground`, `okf-diff`, `okf-seed`, the ontology machinery, and the rules every kDB follows |
 | `pantelis/physical-ai-kdb` | course | the package `physical-ai-kdb`, module `physical_ai_kdb`: the VLA profile (its rules and three seed specs) and the student README |
-| `pantelis/ar4-digital-twin` | course | later, an AR4 profile next to `twin-check` and `twin-mcp-log` |
+| `pantelis/ar4-digital-twin` | course | the `ar4` profile (quantities with units, cited or recomputed by formula), next to `twin-check` and `twin-mcp-log` |
 
 The command names and the module name stay the same, so nothing on the project page changes:
 students still run `okf-validate kdb`, and code that imports `kdb_tools.locate.find_quote` still
@@ -42,8 +42,12 @@ Rule ids do not change. The core keeps `okf.*` and the `project.*` rules every k
 `aliases`, `entity`, `contested`, `ontology`, `term`, `term-label` and `computation`. The VLA
 profile takes `project.result`, `project.condition`, `project.dataset` and `project.trained-on`.
 
-Reference-agent code (chunked ingest, the table-row reader, the prompt guard, the `ask` agent)
-stays in the private solution repositories. In both projects students write their own agent.
+Reference-agent code (chunked ingest, the table-row reader, the `ask` agent's search tools)
+stays in the private solution repositories. In both projects students write their own agent. From
+0.4.0 the parts of an agent that do not depend on the project are in the core's `agent` extra:
+the `kdb.toml` model config, the prompt guard, and extraction and ask agents that send back
+evidence that is not where the model says. Each project's starter supplies its own output types
+and instructions.
 
 ## Order
 
@@ -54,4 +58,5 @@ stays in the private solution repositories. In both projects students write thei
 3. Point `pantelis/physical-ai-kdb-solution` at the profile package and rerun its tests.
 4. Release the AI project only after steps 1 to 3, so students install the split layout from the
    start.
-5. Add the AR4 profile when the AR4 kDB is designed.
+5. Add the AR4 profile when the AR4 kDB is designed. Done in 0.4.0, which also added spreadsheet
+   cell sources for Annin's spreadsheets and moved the common agent parts into the core.
