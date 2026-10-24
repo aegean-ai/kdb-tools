@@ -12,7 +12,7 @@ split so that a fix lands once and both projects grade with the same code.
 | Repository | Visibility | Holds |
 |---|---|---|
 | `aegean-ai/kdb-tools` | public | the package `kdb-tools`, module `kdb_tools`: bundle I/O, `locate`, `annotate`, `okf-validate`, `okf-ground`, `okf-diff`, `okf-seed`, the ontology machinery, and the rules every kDB follows |
-| `pantelis/physical-ai-kdb` | course | the package `physical-ai-kdb`, module `physical_ai_kdb`: the VLA profile (its rules and three seed specs), the Pi skill and the student README |
+| `pantelis/physical-ai-kdb` | course | the package `physical-ai-kdb`, module `physical_ai_kdb`: the VLA profile (its rules and three seed specs) and the student README |
 | `pantelis/ar4-digital-twin` | course | later, an AR4 profile next to `twin-check` and `twin-mcp-log` |
 
 The command names and the module name stay the same, so nothing on the project page changes:
