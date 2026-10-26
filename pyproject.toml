@@ -1,6 +1,6 @@
 [project]
 name = "kdb-tools"
-version = "0.5.0"
+version = "0.5.1"
 description = "Store and check a kDB: OKF v0.2 bundles, grounding against PDFs and spreadsheets, highlights, snapshot diffs and layered ontologies, with project profiles"
 requires-python = ">=3.11"
 license = "MIT"

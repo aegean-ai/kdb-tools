@@ -142,7 +142,9 @@ def restore(src: Path, into: Path) -> LakeConfig:
     """Check every hash in src's manifest, then copy the files into `into` and point the catalog at them.
 
     Raises RestoreError naming the first file that is missing or differs, before anything is opened.
-    Media lands under data/media/ so that store_for(cfg) finds it, as it does in a live lake."""
+    Media lands under data/media/ so that store_for(cfg) finds it, as it does in a live lake. A kdb.toml
+    with a [lake] table goes into `into` too, with paths relative to it, so every kdb command run with
+    that config reads the restored lake."""
     src, into = Path(src), Path(into)
     manifest = _manifest(src)
     catalogs = [rel for rel in manifest["files"] if rel.startswith("catalog/")]
@@ -174,6 +176,12 @@ def restore(src: Path, into: Path) -> LakeConfig:
         con.execute("UPDATE ducklake_metadata SET value = ? WHERE key = 'data_path'", [data_path])
     finally:
         con.close()
+    (into / "kdb.toml").write_text(
+        "[lake]\n"
+        f"catalog = {json.dumps(catalogs[0], ensure_ascii=False)}\n"
+        'data_path = "data/"\n'
+        f"team = {json.dumps(manifest['team'], ensure_ascii=False)}\n"
+        f"iri_base = {json.dumps(manifest['iri_base'], ensure_ascii=False)}\n")
     return LakeConfig(catalog=catalog, data_path=data_path, team=manifest["team"], iri_base=manifest["iri_base"])
 
 
@@ -208,7 +216,8 @@ def restore_main(argv: list[str] | None = None) -> int:
         cfg = restore(args.src, args.into)
     except (RestoreError, duckdb.Error) as e:
         return fail(tool, str(e))
-    print(f"restored to {args.into}\ncatalog   {cfg.catalog}\ndata_path {cfg.data_path}\nteam      {cfg.team}")
+    print(f"restored to {args.into}\ncatalog   {cfg.catalog}\ndata_path {cfg.data_path}\nteam      {cfg.team}\n"
+          f"config    {args.into / 'kdb.toml'}")
     return 0
 
 
