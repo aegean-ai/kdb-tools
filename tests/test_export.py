@@ -197,3 +197,14 @@ def test_the_commands_print_errors_not_tracebacks(ctx, pdfs, tmp_path, capsys):
     assert restore_main([str(tmp_path / "x"), str(tmp_path / "g2")]) == 2
     assert "manifest.json is missing" in capsys.readouterr().err
     assert main([str(ctx.root), str(tmp_path / "d2"), "--lake-config", str(tmp_path / "none.toml")]) == 2
+
+
+def test_restore_writes_a_kdb_toml_that_opens_the_restored_lake(ctx, pdfs, tmp_path, monkeypatch):
+    from kdb_tools.lake import load_config
+    _, dest = exported(ctx, pdfs, tmp_path)
+    cfg = restore(dest, tmp_path / "grader")
+    monkeypatch.chdir(tmp_path)  # relative paths in it resolve from its own folder, not from here
+    again = load_config(tmp_path / "grader" / "kdb.toml")
+    assert (again.catalog.resolve(), again.data_path, again.team, again.iri_base) == \
+        (cfg.catalog.resolve(), cfg.data_path, cfg.team, cfg.iri_base)
+    assert read(again, "SELECT count(*) FROM results") == [(2,)]

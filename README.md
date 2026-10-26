@@ -20,7 +20,7 @@ pages cite their sources the same way, as page frontmatter.
 | `okf-diff` | lists the pages that changed between two versions of a bundle, and checks that unchanged pages stayed byte-identical and kept their `generated` stamps. With `--lake-config` and `--snapshots A B`, it lists the rows added, changed and removed between two snapshots of the lake, with the actions that made each change, and reports `diff.unlogged` for a change no action made |
 | `okf-seed` | writes a seed ontology into the bundle through the `SeedOntology` action, with each term defined by a quote it finds and highlights in the bundle's own PDFs. It needs a `[lake]` in `kdb.toml` and refuses without one |
 | `okf-export` | writes the lake at its latest snapshot into a folder: the catalog file, its data files, every media file, and a manifest of their sha256 |
-| `okf-restore` | checks every hash in an export's manifest, then restores it into an empty folder and prints the local lake config |
+| `okf-restore` | checks every hash in an export's manifest, then restores it into an empty folder and writes a `kdb.toml` there that opens the restored lake |
 | `okf-mcp` | serves the tools below over MCP (needs the `mcp` extra) |
 
 None of them calls a model. The same checks are the Python package `kdb_tools`, and
