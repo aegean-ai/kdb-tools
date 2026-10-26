@@ -74,6 +74,7 @@ def evaluate(b: B.Bundle, formula: str, lookup: Callable[[str, str], float]) -> 
         raise FormulaError("it divides by zero") from exc
     except OverflowError as exc:
         raise FormulaError("it is too large to compute") from exc
-    if not math.isfinite(value):  # float overflow gives inf (or nan) without raising
-        raise FormulaError("its result is not a finite number")
+    # float overflow gives inf or nan without raising, and a negative base to a fractional power is complex
+    if isinstance(value, complex) or not math.isfinite(value):
+        raise FormulaError("its result is not a finite real number")
     return value

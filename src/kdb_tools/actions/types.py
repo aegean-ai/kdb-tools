@@ -24,7 +24,7 @@ from .. import seed as S
 from .. import units as U
 from ..report import Report
 from . import adopt  # noqa: F401  registers AdoptBundle, which RevertAction looks up
-from .base import REGISTRY, ActionType, Failed, PageEdit, RowEdit, _ident, load_row_edits, register
+from .base import KEYS, REGISTRY, ActionType, Failed, PageEdit, RowEdit, _ident, load_row_edits, register
 
 LOG = "log.md"
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]*")
@@ -716,6 +716,9 @@ class RevertAction(ActionType[RevertParams]):
                 out.append(f"{e['path']} changed since {p.action_id} wrote it")
             elif e["path"] != LOG and (m := active_guard(ctx.read(e["path"]), e["before_text"])):
                 out.append(m)  # design 7.5: an active class is deprecated, never deleted, demoted or renamed
+        for r in load_row_edits(rows):  # a row edited outside any action would be overwritten silently
+            if not _row_as_left(ctx, r):
+                out.append(f"row {r['iri']} of {r['table']} changed since {p.action_id} wrote it")
         return out
 
     def edits(self, ctx, p):
@@ -729,6 +732,21 @@ class RevertAction(ActionType[RevertParams]):
 
     def reverts(self, ctx, p):
         return p.action_id
+
+
+def _row_as_left(ctx, r: dict) -> bool:
+    """Whether a logged row edit's row is still as the action left it: gone after a delete, holding the
+    logged values after an insert or update. Media rows are content-addressed, so only presence counts."""
+    from .objects import read_row
+    if r["table"] in KEYS:
+        key = KEYS[r["table"]]
+        found = ctx.lake.con.execute(f"SELECT count(*) FROM {_ident(r['table'])} WHERE {_ident(key)} = ?",
+                                     [r["iri"]]).fetchone()[0] > 0
+        return found == (r["op"] != "delete")
+    now = read_row(ctx, r["table"], r["iri"])
+    if r["op"] == "delete":
+        return now is None
+    return now is not None and all(now.get(c) == v for c, v in (r["after"] or {}).items() if c != "iri")
 
 
 def _json(value):

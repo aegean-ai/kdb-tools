@@ -132,9 +132,9 @@ def test_bounds_with_formula_reference_does_not_crash(bundle, bounds, expected):
     assert build(bundle, [good(), c]) == expected
 
 
-@pytest.mark.parametrize("f", ["1e308 * 10", "1e308 * 10 - 1e308 * 10"])
+@pytest.mark.parametrize("f", ["1e308 * 10", "1e308 * 10 - 1e308 * 10", "(-1) ** 0.5"])
 def test_a_formula_that_overflows_to_infinity_or_nan_is_an_error(bundle, f):
     from kdb_tools import bundle as B
     b = B.load(bundle.root)
-    with pytest.raises(FormulaError, match="finite"):
+    with pytest.raises(FormulaError, match="finite real number"):
         evaluate(b, f, lambda p, n: 0)

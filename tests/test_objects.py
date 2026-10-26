@@ -431,3 +431,21 @@ def test_register_media_turns_an_unreadable_or_unusable_path_into_failed(ctx, tm
     with pytest.raises(Failed) as e:
         RegisterMedia().submit(ctx, {"path": "bad\x00name.pdf", "origin": "x"})
     assert e.value.messages == ["'bad\\x00name.pdf' is not a usable path"]
+
+
+def test_a_revert_refuses_a_row_changed_outside_any_action(ctx):
+    aid = UpsertObjects().submit(ctx, {"class_iri": RESULT, "rows": [result(title="OpenVLA")]})
+    ctx.lake.con.execute("UPDATE results SET title = 'edited in SQL' WHERE iri = ?", [T1 + "results/openvla-libero"])
+    with pytest.raises(Failed) as e:
+        RevertAction().submit(ctx, {"action_id": aid})
+    assert e.value.messages == [f"row {T1}results/openvla-libero of results changed since {aid} wrote it"]
+    assert row(ctx, T1 + "results/openvla-libero")["title"] == "edited in SQL"
+
+
+def test_a_revert_of_a_delete_refuses_a_row_put_back_outside_any_action(ctx):
+    UpsertObjects().submit(ctx, {"class_iri": RESULT, "rows": [result(title="OpenVLA")]})
+    aid = DeleteObjects().submit(ctx, {"class_iri": RESULT, "iris": [T1 + "results/openvla-libero"], "reason": "dup"})
+    ctx.lake.con.execute("INSERT INTO results (iri, title) VALUES (?, 'back')", [T1 + "results/openvla-libero"])
+    with pytest.raises(Failed) as e:
+        RevertAction().submit(ctx, {"action_id": aid})
+    assert e.value.messages == [f"row {T1}results/openvla-libero of results changed since {aid} wrote it"]
