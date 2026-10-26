@@ -26,7 +26,7 @@ import duckdb
 from . import bundle as B
 from . import lake as L
 from . import onto as O
-from .actions.base import KEYS, load_row_edits
+from .actions.base import KEYS, _ident, load_row_edits
 from .config import ConfigError
 from .export import snapshot_ids, tables_at
 from .report import Report, fail
@@ -92,7 +92,7 @@ def _rows_at(lake: L.Lake, table: str, snapshot: int, exists: set[str]) -> dict[
     """A table's rows at a snapshot keyed by iri (or sha256), as column dicts; empty when it did not exist yet."""
     if table not in exists:
         return {}
-    cur = lake.con.execute(f"SELECT * FROM {table} AT (VERSION => {int(snapshot)})")
+    cur = lake.con.execute(f"SELECT * FROM {_ident(table)} AT (VERSION => {int(snapshot)})")
     names = [d[0] for d in cur.description]
     key = KEYS.get(table, "iri")
     return {r[names.index(key)]: dict(zip(names, r)) for r in cur.fetchall()}

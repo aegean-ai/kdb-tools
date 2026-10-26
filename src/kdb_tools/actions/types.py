@@ -616,8 +616,8 @@ class SeedParams(BaseModel):
 class SeedOntology(ActionType[SeedParams]):
     """The seeder's page writes as one action. Nothing to change gives an action with no page edits.
 
-    Highlights for the quotes go into annotated/*.pdf, which are not pages: seed.seed_action writes
-    them after the commit."""
+    Highlights for the quotes go into annotated/*.pdf, which are not pages, so after_commit writes
+    them. Every way of submitting the action (okf-seed, MCP, the agent toolset) gets them."""
 
     name = "SeedOntology"
     version = 1
@@ -641,6 +641,13 @@ class SeedOntology(ActionType[SeedParams]):
         if pages:
             pages.append(log_line(ctx, self, f"seeded the {domain} ontology, {len(s.written)} pages written"))
         return pages, [], []
+
+    def after_commit(self, ctx, p):
+        """Highlight each quote in annotated/<arxiv-id>.pdf. Quotes already highlighted are skipped,
+        so a rerun only finishes what an earlier run left."""
+        s = S.compute(ctx.root, p.spec["domain"], p.spec, Report(S.TOOL), S.stamp(ctx.now))
+        if s is not None:
+            S.apply_marks(ctx.root, s.marks)
 
 
 # --- RevertAction ---

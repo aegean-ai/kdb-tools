@@ -254,3 +254,11 @@ def test_a_bind_table_that_adds_a_column_is_credited_with_the_row_changes(lctx, 
     report = ld(lctx, tmp_path, s1, lctx.lake.snapshot())
     assert [f for f in report.findings if f.rule == "diff.unlogged"] == []
     assert report.extra["tables"]["results"]["changed"] == [{"iri": LIRI, "actions": [bound]}]
+
+
+def test_a_table_named_after_a_sql_keyword_reads_at_a_snapshot(lctx):
+    from kdb_tools.diff import _rows_at
+    lctx.lake.con.execute('CREATE TABLE "select" (iri VARCHAR, title VARCHAR)')
+    lctx.lake.con.execute("""INSERT INTO "select" VALUES ('x', 'a')""")
+    s = lctx.lake.snapshot()
+    assert _rows_at(lctx.lake, "select", s, {"select"}) == {"x": {"iri": "x", "title": "a"}}

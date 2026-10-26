@@ -404,10 +404,9 @@ def stamp(now: dt.datetime) -> str:
 
 
 def seed_action(ctx, name: str, spec: dict, report: Report) -> None:
-    """Seed one spec as the SeedOntology action, then highlight its quotes.
+    """Seed one spec as the SeedOntology action, which also highlights its quotes after the commit.
 
-    The seeder's findings come first: a spec with an error changes nothing. The highlights in
-    annotated/*.pdf are not pages, so they are written directly, after the commit."""
+    The seeder's findings come first: a spec with an error changes nothing."""
     from .actions import Failed
     from .actions.types import SeedOntology
 
@@ -422,7 +421,6 @@ def seed_action(ctx, name: str, spec: dict, report: Report) -> None:
         for message in e.messages:
             report.error("seed.action", name, message)
         return
-    apply_marks(ctx.root, s.marks)
     report.extra["written"] += s.written
     report.extra["terms"] += s.terms
     report.extra["types"] += s.types

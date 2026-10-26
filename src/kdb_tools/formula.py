@@ -8,6 +8,7 @@ reference uses the value as written, so a formula carries its own unit factors.
 from __future__ import annotations
 
 import ast
+import math
 import operator
 import re
 from typing import Callable
@@ -68,8 +69,11 @@ def evaluate(b: B.Bundle, formula: str, lookup: Callable[[str, str], float]) -> 
         raise FormulaError("it may use only numbers, values written as /<page>.md#<name>, + - * / ** and parentheses")
 
     try:
-        return walk(tree)
+        value = walk(tree)
     except ZeroDivisionError as exc:
         raise FormulaError("it divides by zero") from exc
     except OverflowError as exc:
         raise FormulaError("it is too large to compute") from exc
+    if not math.isfinite(value):  # float overflow gives inf (or nan) without raising
+        raise FormulaError("its result is not a finite number")
+    return value

@@ -477,3 +477,14 @@ def test_revert_runs_row_edits_backwards(ctx, note_row):
     assert ctx.lake.con.execute("SELECT text FROM notes").fetchall() == [("one",)]
     RevertAction().submit(ctx, {"action_id": first})
     assert ctx.lake.con.execute("SELECT count(*) FROM notes").fetchone()[0] == 0
+
+
+def test_seed_ontology_submitted_directly_highlights_its_quotes(fresh, tmp_path):
+    # MCP and the agent toolset submit SeedOntology without going through seed.seed_action
+    from test_seed import paper, spec as term_spec
+
+    from kdb_tools.ground import ground
+    paper(fresh)
+    SeedOntology().submit(fresh, {"spec": yaml.safe_load(term_spec(tmp_path).read_text())})
+    assert (fresh.root / "annotated" / "2308.12952.pdf").is_file()
+    assert [f.rule for f in ground(fresh.root).findings if f.rule == "ground.highlight"] == []
