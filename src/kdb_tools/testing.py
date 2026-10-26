@@ -143,6 +143,58 @@ def ontology(bundle, name, extends=()):
     bundle.add(f"ontology/{name}/ontology.md", fm)
 
 
+def domain(bundle, name, base_iri, extends=()):
+    """Add the Ontology page of one domain with its base_iri."""
+    fm = concept(type="Ontology", title=f"{name} ontology", base_iri=base_iri)
+    if extends:
+        fm["extends"] = [f"/ontology/{e}/ontology.md" for e in extends]
+    bundle.add(f"ontology/{name}/ontology.md", fm)
+    bundle.__dict__.setdefault("bases", {})[name] = base_iri
+
+
+def _type_page(bundle, domain_name, folder, slug, fm, iri=None):
+    """Write a type page under ontology/<domain>/<folder>/; the iri defaults to <base_iri><folder>/<slug>."""
+    base = bundle.__dict__.get("bases", {}).get(domain_name, f"https://example.org/{domain_name}/")
+    fm = {"title": slug.replace("-", " ").title(), "iri": iri or f"{base}{folder}/{slug}",
+          "generated": {"by": "test", "at": "2026-11-02T18:00:00Z"}, **fm}
+    bundle.add(f"ontology/{domain_name}/{folder}/{slug}.md", fm, body="A scope note.\n")
+
+
+def _expand(bundle, domain_name, folder, ref):
+    """A slug becomes <base_iri><folder>/<slug>; a full IRI stays as it is."""
+    if "://" in ref:
+        return ref
+    return f"{bundle.__dict__.get('bases', {})[domain_name]}{folder}/{ref}"
+
+
+def prop(bundle, domain_name, slug, datatype, unit=None, required=False, iri=None, **extra):
+    """A Property page."""
+    fm = {"type": "Property", "datatype": datatype, "required": required, **extra}
+    if unit is not None:
+        fm["unit"] = unit
+    _type_page(bundle, domain_name, "properties", slug, fm, iri)
+
+
+def klass(bundle, domain_name, slug, table=None, columns=None, key="iri", title="title", subclass_of=(),
+          implements=(), status="experimental", iri=None, **extra):
+    """A Class page. Column values, subclass_of and implements may be slugs of this domain."""
+    fm = {"type": "Class", "status": status,
+          "subclass_of": [_expand(bundle, domain_name, "classes", r) for r in subclass_of],
+          "implements": [_expand(bundle, domain_name, "interfaces", r) for r in implements], **extra}
+    if table is not None:
+        cols = {c: _expand(bundle, domain_name, "properties", p) for c, p in (columns or {}).items()}
+        fm["binding"] = {"table": table, "key": key, "title": title, "columns": cols}
+    _type_page(bundle, domain_name, "classes", slug, fm, iri)
+
+
+def interface(bundle, domain_name, slug, properties=(), links=(), iri=None):
+    """An Interface page; properties are (slug or IRI, required) pairs."""
+    fm = {"type": "Interface",
+          "properties": [{"property": _expand(bundle, domain_name, "properties", p), "required": r} for p, r in properties],
+          "links": [dict(link) for link in links]}
+    _type_page(bundle, domain_name, "interfaces", slug, fm, iri)
+
+
 def rules(report):
     return sorted({(f.rule, f.level) for f in report.findings})
 

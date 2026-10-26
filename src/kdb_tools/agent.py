@@ -26,11 +26,13 @@ from pydantic_ai.toolsets import FunctionToolset
 from . import bundle as B
 from . import sheet as S
 from .locate import find_quote as locate_quote
+from .actions import Context, Failed
 from .tools import Checked, KdbTools, Match, ToolInputError
 
 
-def toolset(root: Path, profiles=None) -> FunctionToolset:
-    kt = KdbTools(root, profiles)
+def toolset(root: Path, profiles=None, ctx: Context | None = None) -> FunctionToolset:
+    """The kDB tools. Given a Context (a lake), the agent also reads classes and objects and runs actions."""
+    kt = KdbTools(root, profiles, ctx)
 
     def retry_on_bad_input(fn):
         @functools.wraps(fn)  # keeps the name, signature and docstring the model sees
@@ -39,6 +41,8 @@ def toolset(root: Path, profiles=None) -> FunctionToolset:
                 return fn(*args, **kwargs)
             except ToolInputError as e:
                 raise ModelRetry(str(e)) from e
+            except Failed as e:  # an action that failed or conflicted: the model gets every message
+                raise ModelRetry("\n".join(e.messages)) from e
         return wrapped
 
     @retry_on_bad_input
@@ -55,7 +59,7 @@ def toolset(root: Path, profiles=None) -> FunctionToolset:
 
     @retry_on_bad_input
     def find_cell(document: str, value: str, sheet: str | None = None) -> Match:
-        """Find the cells of a spreadsheet (.xlsx or .csv) that hold a value, such as 169.77. document is the
+        """Find the cells of a spreadsheet (.xlsx, .xlsm or .csv) that hold a value, such as 169.77. document is the
         file name without its suffix, and sheet limits the search to one sheet. Returns cells such as DH!B4."""
         return kt.find_cell(document, value, sheet)
 
@@ -64,7 +68,50 @@ def toolset(root: Path, profiles=None) -> FunctionToolset:
         and warnings. Use it after writing pages to see what to fix."""
         return kt.check_pages(paths)
 
-    return FunctionToolset([Tool(f, takes_ctx=False) for f in (find_quote, find_value, find_cell, check_pages)])
+    tools = [find_quote, find_value, find_cell, check_pages]
+    if ctx is not None:
+        tools += _lake_tools(kt, retry_on_bad_input)
+    return FunctionToolset([Tool(f, takes_ctx=False) for f in tools])
+
+
+def _lake_tools(kt: KdbTools, guarded) -> list:
+    @guarded
+    def list_classes() -> list[dict]:
+        """Every class in the kDB with its status (experimental, active or deprecated) and bound table."""
+        return kt.list_classes()
+
+    @guarded
+    def get_class(iri: str) -> dict:
+        """One class: status, supertypes, interfaces, binding, constraints and its properties by column."""
+        return kt.get_class(iri)
+
+    @guarded
+    def query_objects(class_iri: str, where: dict[str, str] | None = None, limit: int = 50) -> list[dict]:
+        """Rows of a class's table. where maps column names to values the column must equal, compared as text."""
+        return kt.query_objects(class_iri, where, limit)
+
+    @guarded
+    def get_object(iri: str) -> dict | None:
+        """The row with this iri, from whichever class's table holds it, or null."""
+        return kt.get_object(iri)
+
+    @guarded
+    def actions() -> list[dict]:
+        """Every action you can run, with its version and the JSON schema of its params."""
+        return kt.actions()
+
+    @guarded
+    def dry_run(action: str, params: dict) -> dict:
+        """The plan an action would carry out (pages and rows it would edit). It changes nothing."""
+        return kt.dry_run(action, params)
+
+    @guarded
+    def submit(action: str, params: dict) -> dict:
+        """Run an action. It is the only way to change a page or a row. An agent's action that edits an active Class
+        page is refused: a person must submit it. Returns the action_id."""
+        return kt.submit(action, params)
+
+    return [list_classes, get_class, query_objects, get_object, actions, dry_run, submit]
 
 
 class Quote(BaseModel):

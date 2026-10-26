@@ -132,3 +132,125 @@ def test_main_takes_two_directories_and_prints_json(bundle, tmp_path, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["tool"] == "okf-diff" and out["changed"][0]["path"] == "models/openvla.md"
     assert main([str(old), str(tmp_path / "nowhere")]) == 2
+
+
+# --- the lakehouse between two snapshots ---
+
+import pytest  # noqa: E402
+from test_objects import PICK, RESULT, T1, register, setup_kdb  # noqa: E402,F401
+from test_objects import pdfs  # noqa: E402,F401
+
+from kdb_tools.actions.objects import DeleteObjects, UpsertObjects  # noqa: E402
+from kdb_tools.diff import lake_diff  # noqa: E402
+
+LIRI = T1 + "results/openvla-libero"
+
+
+@pytest.fixture
+def lctx(bundle, tmp_path):
+    (tmp_path / "lake").mkdir()
+    c = setup_kdb(bundle, tmp_path / "lake")
+    yield c
+    c.lake.close()
+
+
+def lcfg(tmp_path):
+    from kdb_tools.lake import LakeConfig
+    return LakeConfig(catalog=tmp_path / "lake" / "meta.ducklake", data_path=str(tmp_path / "lake" / "data") + "/",
+                      team="team-1", iri_base="https://data.aegean.ai/vla/team-1/")
+
+
+def upsert(ctx, *rows):
+    return UpsertObjects().submit(ctx, {"class_iri": RESULT, "rows": list(rows)})
+
+
+def ld(ctx, tmp_path, a, b):
+    ctx.lake.close()
+    return lake_diff(lcfg(tmp_path), ctx.root, a, b)
+
+
+def test_lake_diff_lists_added_changed_and_removed_rows_with_their_action_ids(lctx, tmp_path):
+    first = upsert(lctx, {"iri": LIRI, "title": "OpenVLA"}, {"iri": LIRI + "-2", "title": "Octo"})
+    s1 = lctx.lake.snapshot()
+    second = upsert(lctx, {"iri": LIRI, "title": "OpenVLA on LIBERO"}, {"iri": LIRI + "-3", "title": "Pi0"})
+    third = DeleteObjects().submit(lctx, {"class_iri": RESULT, "iris": [LIRI + "-2"], "reason": "duplicate"})
+    s2 = lctx.lake.snapshot()
+    report = ld(lctx, tmp_path, s1, s2)
+    t = report.extra["tables"]["results"]
+    assert t["added"] == [{"iri": LIRI + "-3", "actions": [second]}]
+    assert t["changed"] == [{"iri": LIRI, "actions": [second]}]
+    assert t["removed"] == [{"iri": LIRI + "-2", "actions": [third]}]
+    assert report.extra["actions"] == [second, third] and first not in report.extra["actions"]
+    assert rules(report) == [("diff.row-added", "warning", "results"), ("diff.row-changed", "warning", "results"),
+                             ("diff.row-removed", "warning", "results")]
+    assert report.errors == 0
+
+
+def test_lake_diff_includes_media_and_a_table_bound_after_the_first_snapshot(lctx, pdfs, tmp_path):
+    s0 = lctx.lake.snapshot()
+    pdf, _, _ = pdfs
+    register(lctx, pdf)
+    report = ld(lctx, tmp_path, s0, s0 + 1)
+    [added] = report.extra["tables"]["kdb.media"]["added"]
+    assert len(added["actions"]) == 1 and report.errors == 0
+
+
+def test_a_row_changed_outside_an_action_is_unlogged(lctx, tmp_path):
+    upsert(lctx, {"iri": LIRI, "title": "OpenVLA"})
+    s1 = lctx.lake.snapshot()
+    lctx.lake.con.execute("UPDATE results SET title = 'sneaky' WHERE iri = ?", [LIRI])
+    lctx.lake.con.execute("DELETE FROM kdb.media")  # nothing to delete: no change
+    report = ld(lctx, tmp_path, s1, s1 + 1)
+    assert rules(report) == [("diff.row-changed", "warning", "results"), ("diff.unlogged", "error", "results")]
+
+
+def test_a_hand_edit_of_a_row_a_logged_action_also_touched_is_unlogged(lctx, tmp_path):
+    s0 = lctx.lake.snapshot()
+    x = upsert(lctx, {"iri": LIRI, "title": "OpenVLA"})
+    lctx.lake.con.execute("UPDATE results SET title = 'sneaky' WHERE iri = ?", [LIRI])
+    report = ld(lctx, tmp_path, s0, lctx.lake.snapshot())
+    assert [(f.rule, f.level) for f in report.findings if f.rule == "diff.unlogged"] == [("diff.unlogged", "error")]
+    assert LIRI in [f for f in report.findings if f.rule == "diff.unlogged"][0].message
+    assert report.extra["tables"]["results"]["added"] == [{"iri": LIRI, "actions": [x]}]
+
+
+def test_lake_diff_of_equal_snapshots_is_empty(lctx, tmp_path):
+    upsert(lctx, {"iri": LIRI, "title": "OpenVLA"})
+    s = lctx.lake.snapshot()
+    assert rules(ld(lctx, tmp_path, s, s)) == []
+
+
+def test_lake_diff_cli(lctx, tmp_path, capsys):
+    upsert(lctx, {"iri": LIRI, "title": "OpenVLA"})
+    s1 = lctx.lake.snapshot()
+    upsert(lctx, {"iri": LIRI, "title": "Changed"})
+    s2 = lctx.lake.snapshot()
+    lctx.lake.close()
+    cfg = lcfg(tmp_path)
+    toml = tmp_path / "kdb.toml"
+    toml.write_text(f'[lake]\ncatalog = "{cfg.catalog}"\ndata_path = "{cfg.data_path}"\nteam = "team-1"\niri_base = "{cfg.iri_base}"\n')
+    base = [str(lctx.root), "--lake-config", str(toml)]
+    assert main(base + ["--snapshots", str(s1), str(s2), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["tables"]["results"]["changed"][0]["iri"] == LIRI
+    assert main(base + ["--snapshots", "0", "9999"]) == 2
+    assert "snapshot 9999 does not exist" in capsys.readouterr().err
+    assert main([str(lctx.root), "--snapshots", "1", "2"]) == 2
+    assert main(base + ["--snapshots", "1", "2", "--git", "a", "b"]) == 2
+    assert main(["--lake-config", str(toml), "--snapshots", "1", "2", str(tmp_path / "nope")]) == 2
+    assert main(base + ["--snapshots", "0", "1"]) == 0  # before the system tables existed
+
+
+def test_a_bind_table_that_adds_a_column_is_credited_with_the_row_changes(lctx, tmp_path):
+    from test_objects import BINDING, CORE
+
+    from kdb_tools.actions.types import AddProperty, BindTable
+
+    upsert(lctx, {"iri": LIRI, "title": "OpenVLA"})
+    s1 = lctx.lake.snapshot()
+    AddProperty().submit(lctx, {"domain": "core", "slug": "notes", "title": "Notes", "datatype": "string",
+                                "description": "Notes."})
+    binding = {**BINDING, "columns": {**BINDING["columns"], "notes": CORE + "properties/notes"}}
+    bound = BindTable().submit(lctx, {"class_iri": RESULT, "binding": binding})
+    report = ld(lctx, tmp_path, s1, lctx.lake.snapshot())
+    assert [f for f in report.findings if f.rule == "diff.unlogged"] == []
+    assert report.extra["tables"]["results"]["changed"] == [{"iri": LIRI, "actions": [bound]}]

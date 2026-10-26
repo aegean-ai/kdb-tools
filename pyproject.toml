@@ -1,6 +1,6 @@
 [project]
 name = "kdb-tools"
-version = "0.4.0"
+version = "0.5.0"
 description = "Store and check a kDB: OKF v0.2 bundles, grounding against PDFs and spreadsheets, highlights, snapshot diffs and layered ontologies, with project profiles"
 requires-python = ">=3.11"
 license = "MIT"
@@ -10,17 +10,23 @@ dependencies = [
     "pypdf>=5",
     "pillow>=13", # security floor: every Pillow below 13.0.0 has open advisories (GHSA-v9pv-5gc8-w2m6 and others)
     "openpyxl>=3.1",
+    "duckdb>=2.0,<3",  # the lakehouse: DuckLake catalog, installed at runtime with INSTALL ducklake
+    "pytz>=2024.1",  # DuckDB needs it to return TIMESTAMPTZ values
+    "pydantic>=2.7",  # action parameters are Pydantic models
 ]
 
 [project.optional-dependencies]
 agent = ["pydantic-ai-slim[openai]>=2.58,<3"]  # kdb_tools.agent: the checks as tools, and the common agent parts
 mcp = ["mcp>=2.3,<3"]  # okf-mcp: the same tools over MCP
+s3 = ["boto3>=1.35"]  # kdb_tools.lake.S3Store: media in an S3-compatible bucket
 
 [project.scripts]
 okf-validate = "kdb_tools.validate:main"
 okf-ground = "kdb_tools.ground:main"
 okf-diff = "kdb_tools.diff:main"
 okf-seed = "kdb_tools.seed:main"
+okf-export = "kdb_tools.export:main"
+okf-restore = "kdb_tools.export:restore_main"
 okf-mcp = "kdb_tools.mcp:main"
 
 [dependency-groups]

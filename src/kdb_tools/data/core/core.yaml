@@ -1,0 +1,175 @@
+domain: core
+title: Core
+description: 'The core ontology: shared properties, interfaces and joint classes that other ontologies
+  build on.'
+base_iri: https://kdb.aegean.ai/core/
+properties:
+- slug: title
+  title: Title
+  datatype: string
+  required: true
+  scope: The name a person uses for the thing. Every page and every row has one.
+- slug: description
+  title: Description
+  datatype: string
+  scope: A short plain statement of what the thing is.
+- slug: aliases
+  title: Aliases
+  datatype: string_list
+  scope: Other names the thing goes by.
+- slug: evidence
+  title: Evidence
+  datatype: media_ref_list
+  scope: References to the media that support a statement about the thing, such as a page of a manual
+    or a photo.
+- slug: mass
+  title: Mass
+  datatype: double
+  unit: unit:KiloGM
+  close_match:
+  - http://qudt.org/vocab/quantitykind/Mass
+  scope: The mass of a body, in kilograms.
+- slug: length
+  title: Length
+  datatype: double
+  unit: unit:M
+  close_match:
+  - http://qudt.org/vocab/quantitykind/Length
+  scope: A distance along a line, in metres.
+- slug: angle
+  title: Angle
+  datatype: double
+  unit: unit:RAD
+  close_match:
+  - http://qudt.org/vocab/quantitykind/Angle
+  scope: A plane angle, in radians.
+- slug: media_type
+  title: Media type
+  datatype: string
+  scope: The media type of a stored file, such as application/pdf or video/mp4.
+- slug: sha256
+  title: SHA-256 digest
+  datatype: string
+  scope: The SHA-256 digest of a stored file, as lowercase hexadecimal. It identifies the exact bytes.
+interfaces:
+- slug: link
+  title: Link
+  scope: A rigid body in a kinematic chain. It has a name and a mass.
+  properties:
+  - property: title
+    required: true
+  - property: mass
+    required: false
+  links: []
+- slug: joint
+  title: Joint
+  scope: A connection between two links that allows one kind of relative motion. It joins a parent link
+    to a child link.
+  properties:
+  - property: title
+    required: true
+  links:
+  - name: parent
+    target: link
+    cardinality: many-to-one
+    required: true
+  - name: child
+    target: link
+    cardinality: many-to-one
+    required: true
+- slug: actuator
+  title: Actuator
+  scope: A device that moves a joint or a tool when it is commanded.
+  properties:
+  - property: title
+    required: true
+  links: []
+  close_match:
+  - http://www.w3.org/ns/sosa/Actuator
+- slug: gripper
+  title: Gripper
+  scope: A tool at the end of an arm that holds objects.
+  properties:
+  - property: title
+    required: true
+  links: []
+- slug: robot
+  title: Robot
+  scope: A machine built from links, joints and actuators that can be commanded to move.
+  properties:
+  - property: title
+    required: true
+  links: []
+- slug: twin
+  title: Twin
+  scope: A digital model of a robot that follows the robot's structure and measured values.
+  properties:
+  - property: title
+    required: true
+  links: []
+- slug: observation
+  title: Observation
+  scope: The act of measuring or recording something at a time, with the result it produced.
+  properties:
+  - property: title
+    required: true
+  links: []
+  close_match:
+  - http://www.w3.org/ns/sosa/Observation
+- slug: media-artifact
+  title: Media artifact
+  scope: A stored file, such as a PDF, an image or a video, identified by its digest.
+  properties:
+  - property: media_type
+    required: true
+  - property: sha256
+    required: true
+  links: []
+- slug: document
+  title: Document
+  scope: A media artifact that people read, such as a manual or a paper.
+  properties:
+  - property: title
+    required: true
+  - property: media_type
+    required: true
+  - property: sha256
+    required: true
+  links: []
+classes:
+- slug: revolute-joint
+  title: Revolute joint
+  status: active
+  implements:
+  - joint
+  scope: A joint that rotates about one axis within lower and upper limits.
+- slug: continuous-joint
+  title: Continuous joint
+  status: active
+  implements:
+  - joint
+  scope: A joint that rotates about one axis with no limits.
+- slug: prismatic-joint
+  title: Prismatic joint
+  status: active
+  implements:
+  - joint
+  scope: A joint that slides along one axis within lower and upper limits.
+- slug: fixed-joint
+  title: Fixed joint
+  status: active
+  implements:
+  - joint
+  scope: A joint that allows no motion, so the two links move as one body.
+- slug: floating-joint
+  title: Floating joint
+  status: active
+  implements:
+  - joint
+  scope: A joint that allows motion in all six degrees of freedom.
+- slug: planar-joint
+  title: Planar joint
+  status: active
+  implements:
+  - joint
+  scope: 'A joint that allows motion in a plane: sliding along two axes and rotating about the normal.'
