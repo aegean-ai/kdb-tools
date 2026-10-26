@@ -8,12 +8,18 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
+import json
 import re
 import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
+import duckdb
+
 from . import bundle as B
+from . import lake as L
+from . import onto as O
 from . import profile as P
 from . import sheet as S
 from .report import Report, fail
@@ -172,7 +178,7 @@ def check_sheet_source(page: B.Page, source: dict, path: Path, label: str, repor
     if "cell" in source and not S.is_a1(source["cell"]):
         report.error("project.source", page.rel, "cell is one A1 reference in capitals, such as B4", label)
     if S.needs_sheet(path) and not isinstance(source.get("sheet"), str):
-        report.error("project.source", page.rel, "a cell in an .xlsx file needs the name of its sheet", label)
+        report.error("project.source", page.rel, "a cell in an .xlsx or .xlsm file needs the name of its sheet", label)
 
 
 def check_concept(b: B.Bundle, page: B.Page, listed: set[Path], all_ids: set[str], report: Report) -> None:
@@ -206,7 +212,7 @@ def check_concept(b: B.Bundle, page: B.Page, listed: set[Path], all_ids: set[str
             report.warning("project.footnote", page.rel, f"footnote [^{label}] has no definition line", label)
     for label in sorted(seen - set(cited)):
         report.warning("project.unused-source", page.rel, f"source '{label}' is never cited", label)
-    for sentence in prose_sentences(page.body):
+    for sentence in prose_sentences(page.body) if fm.get("type") not in O.TYPES else []:
         if "[^" not in sentence:
             report.warning("project.uncited", page.rel, f"sentence has no citation: {sentence[:80]}")
 
@@ -375,8 +381,8 @@ def check_entities(b: B.Bundle, report: Report) -> None:
     owners: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for page in b.concepts:
         fm = page.frontmatter or {}
-        if is_term(page):
-            continue  # terms are checked per domain by check_terms
+        if is_term(page) or fm.get("type") in O.TYPES:
+            continue  # terms are checked per domain by check_terms, type pages by check_ontology
         names = [fm.get("title")] + (fm.get("aliases") if isinstance(fm.get("aliases"), list) else [])
         for name in names:
             if isinstance(name, str) and normalize_name(name):
@@ -398,11 +404,45 @@ def ancestors(b: B.Bundle) -> dict[str, set[str]]:
     return found
 
 
-def validate(root: Path, profiles: list[P.Profile] | None = None, pages: list[str] | None = None) -> Report:
+def check_actions(root: Path, lake: L.Lake, report: Report) -> None:
+    """action.unlogged: a page whose bytes are not what the latest logged edit of it left.
+
+    Every .md file counts, index.md and log.md included, outside the directories bundle.load skips.
+    The latest edit is the one with the latest action_log "at" (ties by action_id). An action that a
+    revert has undone (reverted_by set) is skipped, so the page falls back to the edit before it.
+    """
+    rows = lake.con.execute('SELECT page_edits FROM kdb.action_log WHERE reverted_by IS NULL '
+                            'ORDER BY "at", action_id').fetchall()
+    latest: dict[str, str | None] = {}
+    for (edits,) in rows:
+        for e in json.loads(edits) if isinstance(edits, str) else edits:
+            latest[e["path"]] = e["after_sha256"]
+    on_disk = {}
+    for path in root.rglob("*.md"):
+        rel = path.relative_to(root)
+        if not any(part in B.SKIP_DIRS for part in rel.parts[:-1]):
+            on_disk[rel.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    for rel, sha in sorted(on_disk.items()):
+        if rel not in latest:
+            report.error("action.unlogged", rel, "no logged action wrote this page; change pages through an action")
+        elif sha != latest[rel]:
+            report.error("action.unlogged", rel, "this page differs from the last logged action that wrote it; "
+                         "change pages through an action")
+    for rel, sha in sorted(latest.items()):
+        if sha is not None and rel not in on_disk:
+            report.error("action.unlogged", rel, "a logged action wrote this page and it is gone; "
+                         "delete pages through an action")
+
+
+def validate(root: Path, profiles: list[P.Profile] | None = None, pages: list[str] | None = None,
+             lake: L.Lake | None = None) -> Report:
     """The core rules, then each profile's page rules; profiles default to the installed ones.
 
     With pages, only findings on those pages (paths from the bundle root) are reported, so an
-    ingest answers for the pages it wrote and not for errors an earlier ingest left."""
+    ingest answers for the pages it wrote and not for errors an earlier ingest left.
+
+    With a lake, the action rules and each profile's row rules run too. Without one they do not (the
+    okf-validate CLI adds the action.no-lake warning itself). A row finding's path is <table>/<iri>."""
     report = Report(TOOL)
     b = B.load(root)
     profiles = P.installed() if profiles is None else profiles
@@ -417,11 +457,26 @@ def validate(root: Path, profiles: list[P.Profile] | None = None, pages: list[st
                     prof.check_page(b, page, report)
     check_entities(b, report)
     check_terms(b, report)
+    O.check_ontology(b, report)
+    if lake is not None:
+        check_actions(root, lake, report)
+        for prof in profiles:
+            if prof.check_rows:
+                prof.check_rows(O.load_ontology(b), lake, report)
     report.extra["pages"] = len(b.concepts)
     if pages is not None:
         wanted = {p.lstrip("/") for p in pages}
         report.findings = [f for f in report.findings if f.path in wanted]
     return report
+
+
+def find_config(bundle: Path) -> Path | None:
+    """The nearest kdb.toml in the bundle directory or a parent of it."""
+    for d in [bundle.resolve(), *bundle.resolve().parents]:
+        candidate = d / "kdb.toml"
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -430,13 +485,34 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="print a JSON report")
     parser.add_argument("--profile", help="run only this installed profile's rules; default: every installed profile")
     parser.add_argument("--pages", nargs="+", metavar="PAGE", help="report only findings on these pages, such as models/openvla.md")
+    parser.add_argument("--lake-config", type=Path, metavar="PATH",
+                        help="the kdb.toml that holds [lake]; default: the nearest kdb.toml in or above the bundle")
     args = parser.parse_args(argv)
     if not args.bundle.is_dir():
         return fail(TOOL, f"{args.bundle} is not a directory")
     profiles = P.installed(args.profile)
     if args.profile and not profiles:
         return fail(TOOL, f"no installed profile is called {args.profile}")
-    report = validate(args.bundle, profiles, args.pages)
+    config = args.lake_config or find_config(args.bundle)
+    try:
+        cfg = L.load_config(config) if config else None
+    except (OSError, ValueError, KeyError) as e:  # a bad or unreadable kdb.toml (ConfigError is a ValueError)
+        return fail(TOOL, f"cannot read the lake config {config}: {e}")
+    lake = None
+    if cfg is not None:
+        try:
+            lake = L.Lake.open(cfg)
+        except Exception as e:
+            return fail(TOOL, f"cannot open the lake at {cfg.catalog}: {e}")
+    try:
+        report = validate(args.bundle, profiles, args.pages, lake)
+    except duckdb.Error as e:
+        return fail(TOOL, f"cannot read the action log: {e}")
+    finally:
+        if lake is not None:
+            lake.close()
+    if cfg is None:
+        report.warning("action.no-lake", ".", "no [lake] in kdb.toml, so edits made outside an action are not detected")
     report.print(args.json)
     return report.exit_code()
 

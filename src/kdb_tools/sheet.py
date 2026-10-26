@@ -1,7 +1,7 @@
 """Spreadsheet cells as evidence: read a cell, find the cells that hold a value, compare values.
 
 A cell source cites a value by file, sheet and A1 cell, such as sheet "DH", cell "B4". .xlsx
-files are read with openpyxl, using the value each formula last computed; .csv files have one
+and .xlsm files are read with openpyxl, using the value each formula last computed (macros never run); .csv files have one
 unnamed sheet, so their sources name no sheet.
 """
 
@@ -11,7 +11,7 @@ import csv
 import re
 from pathlib import Path
 
-SUFFIXES = (".xlsx", ".csv")
+SUFFIXES = (".xlsx", ".xlsm", ".csv")
 A1 = re.compile(r"^([A-Z]{1,3})([1-9][0-9]*)$")
 
 
@@ -20,7 +20,7 @@ class SheetError(ValueError):
 
 
 def needs_sheet(path: Path) -> bool:
-    return path.suffix.lower() == ".xlsx"
+    return path.suffix.lower() in (".xlsx", ".xlsm")
 
 
 def is_a1(ref) -> bool:

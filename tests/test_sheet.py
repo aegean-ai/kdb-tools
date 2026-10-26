@@ -40,6 +40,23 @@ def test_an_xlsx_cell_source_needs_its_sheet(sheet):
     assert errors(validate(sheet.root)) == ["project.source"]
 
 
+def test_a_cell_in_an_xlsm_workbook_grounds(bundle):
+    make_xlsx(bundle.root / "documents" / "dh.xlsm", {"Sheet1": [[""] * 4 for _ in range(12)] + [["", "", "", 169.77]]})
+    bundle.add("parts/link-2.md", concept(type="Link", title="Link 2", sources=[
+        dict(CELL, resource="/documents/dh.xlsm", sheet="Sheet1", cell="D13")]), BODY)
+    assert errors(validate(bundle.root)) == []
+    report = ground(bundle.root)
+    assert errors(report) == [] and report.extra["checked"] == 1
+
+
+def test_an_xlsm_cell_needs_its_sheet(bundle):
+    make_xlsx(bundle.root / "documents" / "dh.xlsm", {"Sheet1": [["a"]]})
+    cell = dict(CELL, resource="/documents/dh.xlsm", cell="A1")
+    del cell["sheet"]
+    bundle.add("parts/link-2.md", concept(type="Link", title="Link 2", sources=[cell]), BODY)
+    assert errors(validate(bundle.root)) == ["project.source"]
+
+
 @pytest.mark.parametrize("ref", ["B0", "4B", "b4", "B4:C5", 4])
 def test_a_cell_is_an_a1_reference(sheet, ref):
     add(sheet, cell=ref)

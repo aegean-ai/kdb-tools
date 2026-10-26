@@ -1,0 +1,21 @@
+# RustFS, an S3-compatible object store for the lake's data files and media.
+# The credentials default to local values for your own machine. The ports open only on this
+# machine (127.0.0.1), so nobody else can use those defaults. To choose your own, set
+# RUSTFS_ACCESS_KEY and RUSTFS_SECRET_KEY in the environment before `docker compose up`.
+# kdb.toml names the same variables in key_env and secret_env.
+# The data lives in the Docker volume rustfs-data, which survives `docker compose down`.
+# `docker compose down -v` deletes it, and your lake's data with it.
+services:
+  rustfs:
+    image: rustfs/rustfs:1.0.1
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-kdblocal}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-kdblocalsecret}
+    volumes:
+      - rustfs-data:/data
+
+volumes:
+  rustfs-data:

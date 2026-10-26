@@ -6,7 +6,8 @@ registers one as a Python entry point in the group "kdb_tools.profiles", for exa
     [project.entry-points."kdb_tools.profiles"]
     vla = "physical_ai_kdb:PROFILE"
 
-okf-validate runs the core rules on every page and then each installed profile's check_page;
+okf-validate runs the core rules on every page and then each installed profile's check_page.
+When it has a lake, it also runs each profile's check_rows once, on the rows of the bound tables.
 okf-seed writes the seeds of the installed profiles. With no profile installed, only the core
 rules run.
 """
@@ -27,6 +28,7 @@ class Profile:
     name: str
     check_page: Callable | None = None  # (bundle, page, report) -> None, for each concept page
     seeds: Traversable | Path | None = None  # a directory of seed spec YAML files
+    check_rows: Callable | None = None  # (ontology, lake, report) -> None, once, only when there is a lake
 
 
 def installed(name: str | None = None) -> list[Profile]:
