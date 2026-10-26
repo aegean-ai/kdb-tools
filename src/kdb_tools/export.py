@@ -178,10 +178,10 @@ def restore(src: Path, into: Path) -> LakeConfig:
         con.close()
     (into / "kdb.toml").write_text(
         "[lake]\n"
-        f"catalog = {json.dumps(catalogs[0])}\n"
+        f"catalog = {json.dumps(catalogs[0], ensure_ascii=False)}\n"
         'data_path = "data/"\n'
-        f"team = {json.dumps(manifest['team'])}\n"
-        f"iri_base = {json.dumps(manifest['iri_base'])}\n")
+        f"team = {json.dumps(manifest['team'], ensure_ascii=False)}\n"
+        f"iri_base = {json.dumps(manifest['iri_base'], ensure_ascii=False)}\n")
     return LakeConfig(catalog=catalog, data_path=data_path, team=manifest["team"], iri_base=manifest["iri_base"])
 
 
