@@ -709,6 +709,11 @@ class RevertAction(ActionType[RevertParams]):
                 out.append(f"the later action {lid} ({lkind}) also edited {', '.join(shared)}; revert it first")
         if out:
             return out  # the later edits explain any change on disk
+        for r in load_row_edits(rows):  # a later citation edits other rows, so the loop above misses it
+            if r["table"] == "kdb.media" and r["op"] == "insert":
+                out += _media_still_used(ctx, r["iri"])
+        if out:
+            return out
         for e in _json(pages):
             data = ctx.path(e["path"]).read_bytes() if ctx.path(e["path"]).exists() else None
             sha = None if data is None else hashlib.sha256(data).hexdigest()
@@ -732,6 +737,32 @@ class RevertAction(ActionType[RevertParams]):
 
     def reverts(self, ctx, p):
         return p.action_id
+
+
+def _media_still_used(ctx, sha256: str) -> list[str]:
+    """Why a registered file cannot be unregistered: the copies that annotate it, and the rows of bound
+    tables whose media_ref_list columns cite it. Empty when nothing depends on it."""
+    from .. import media as M
+    from ..ground import evidence_columns, lake_columns
+    out = [f"{sha256} is still annotated by the registered copy {c['sha256']}; revert that registration first"
+           for c in M.annotated_copies(ctx.lake, sha256)]
+    for table, cols in evidence_columns(O.load_ontology(B.load(ctx.root))):
+        have = lake_columns(ctx.lake, table)
+        cols = [c for c in cols if c in have]
+        if not cols or "iri" not in have:
+            continue  # not bound in the lake yet
+        select = ", ".join(_ident(c) for c in cols)
+        for iri, *values in ctx.lake.con.execute(f"SELECT iri, {select} FROM {_ident(table)} ORDER BY iri").fetchall():
+            for value in values:
+                try:
+                    refs = json.loads(value) if isinstance(value, str) else (value or [])
+                except ValueError:
+                    continue  # malformed evidence is okf-ground's finding, not a citation
+                if isinstance(refs, list) and any(isinstance(x, dict) and x.get("sha256") == sha256 for x in refs):
+                    out.append(f"{sha256} is still cited by row {iri} of {table}; "
+                               "delete that row or drop the citation first")
+                    break
+    return out
 
 
 def _row_as_left(ctx, r: dict) -> bool:
