@@ -154,9 +154,19 @@ def test_the_cli_finds_the_lake_in_kdb_toml(ctx, cited, tmp_path, capsys):
 
 def test_a_highlight_in_any_annotated_copy_of_the_paper_passes(ctx, pdfs, tmp_path):
     """Two registered copies annotate the paper; only the one that sorts second by sha256 marks the quote."""
-    pdf, good, boxes = pdfs
+    pdf, _, boxes = pdfs
+    q0, q1, q2, q3 = boxes[QUOTE]
     x0, y0, x1, y1 = boxes["Another sentence entirely."]
-    for k in range(50):  # vary the wrong highlight until its copy sorts first
+    # The PDF bytes carry a timestamp, so the hashes differ per run. A single good copy can hash so
+    # low that none of the wrong copies sorts before it, and the test then failed. Taking the highest
+    # of 20 good copies and trying 200 wrong ones makes a miss vanishingly unlikely.
+    goods = []
+    for j in range(20):  # widened by at most 9.5 points, well inside MIN_IOU of the quote's bbox
+        good = tmp_path / "src" / f"kim2024-good-{j}.pdf"
+        highlight(pdf, good, [(1, [q0, q1, q2 + j / 2, q3])])
+        goods.append(good)
+    good = max(goods, key=sha)
+    for k in range(200):
         bad = tmp_path / "src" / f"kim2024-other-{k}.pdf"
         highlight(pdf, bad, [(1, [x0, y0, x1 + k, y1])])
         if sha(bad) < sha(good):
@@ -167,3 +177,44 @@ def test_a_highlight_in_any_annotated_copy_of_the_paper_passes(ctx, pdfs, tmp_pa
     register(ctx, good, annotates=sha(pdf))
     upsert(ctx, {"sha256": sha(pdf), "page": 1, "bbox": boxes[QUOTE], "quote": QUOTE})
     assert found(grounded(ctx)) == []
+
+
+def test_a_value_beside_a_correct_quote_is_still_checked(ctx, cited):
+    """A real quote must not vouch for a value that is not in the bbox."""
+    h, boxes = cited
+    upsert(ctx, {"sha256": h, "page": 1, "bbox": boxes[QUOTE], "quote": QUOTE, "value": "99.9"})
+    assert found(grounded(ctx)) == [
+        ("ground.bbox", PATH, "the value '99.9' is not inside its bbox on page 1")]
+
+
+def test_a_registration_still_cited_by_a_row_cannot_be_reverted(ctx, pdfs):
+    from kdb_tools.actions.base import Failed
+    from kdb_tools.actions.types import RevertAction
+    pdf, _, boxes = pdfs
+    aid = register(ctx, pdf)
+    upsert(ctx, {"sha256": sha(pdf), "page": 1, "bbox": boxes[QUOTE], "quote": QUOTE})
+    with pytest.raises(Failed) as e:
+        RevertAction().submit(ctx, {"action_id": aid})
+    assert e.value.messages == [f"{sha(pdf)} is still cited by row {IRI} of results; "
+                                "delete that row or drop the citation first"]
+
+
+def test_a_registration_still_annotated_by_a_copy_cannot_be_reverted(ctx, pdfs):
+    from kdb_tools.actions.base import Failed
+    from kdb_tools.actions.types import RevertAction
+    pdf, marked, _ = pdfs
+    aid = register(ctx, pdf)
+    register(ctx, marked, annotates=sha(pdf))
+    with pytest.raises(Failed) as e:
+        RevertAction().submit(ctx, {"action_id": aid})
+    assert e.value.messages == [f"{sha(pdf)} is still annotated by the registered copy {sha(marked)}; "
+                                "revert that registration first"]
+
+
+def test_an_uncited_registration_can_still_be_reverted(ctx, pdfs):
+    from kdb_tools.actions.types import RevertAction
+    from kdb_tools import media as M
+    pdf, _, _ = pdfs
+    aid = register(ctx, pdf)
+    RevertAction().submit(ctx, {"action_id": aid})
+    assert M.lookup(ctx.lake, sha(pdf)) is None

@@ -177,7 +177,7 @@ def check_paper(paper: Paper, marked, no_copy: str, source: dict, rel: str, repo
         elif not any(inside(s, bbox) for s in spans):
             msg = f"the quote is on page {page_no} but not inside its bbox"
             report.error("ground.bbox", rel, msg + where_hint(paper, page_no, bbox, spans), sid)
-    elif "value" in source:
+    if "value" in source:  # checked even beside a quote: a real quote must not vouch for a wrong value
         spans = find_quote(paper.pdf.pages[page_no - 1], str(source["value"]))
         if not any(inside(s, bbox) for s in spans):
             msg = f"the value '{source['value']}' is not inside its bbox on page {page_no}"
